@@ -2,7 +2,7 @@
 <html lang="de">
 <head>
 <meta charset="UTF-8">
-<title>Open World FIX</title>
+<title>Open World Shooter V2</title>
 
 <style>
 body{
@@ -10,20 +10,19 @@ body{
     overflow:hidden;
     background:#111;
     font-family:Arial;
-    color:white;
 }
 
 canvas{
     display:block;
     margin:auto;
-    background:#1f7a1f;
+    background:#2c8f2c;
 }
 
 #ui{
     position:fixed;
     top:10px;
     left:10px;
-    z-index:10;
+    color:white;
 }
 
 #hpBar{
@@ -39,12 +38,15 @@ canvas{
     background:red;
 }
 
-#minimap{
+#gameOver{
     position:fixed;
-    bottom:20px;
-    right:20px;
-    border-radius:50%;
-    border:2px solid white;
+    top:50%;
+    left:50%;
+    transform:translate(-50%,-50%);
+    font-size:60px;
+    color:red;
+    display:none;
+    font-weight:bold;
 }
 </style>
 </head>
@@ -52,172 +54,237 @@ canvas{
 <body>
 
 <div id="ui">
-❤️ HP
+HP
 <div id="hpBar"><div id="hpFill"></div></div>
 </div>
 
-<canvas id="game" width="900" height="600"></canvas>
-<canvas id="minimap" width="150" height="150"></canvas>
+<div id="gameOver">GAME OVER</div>
+
+<canvas id="c"></canvas>
 
 <script>
 
-const canvas = document.getElementById("game");
-const ctx = canvas.getContext("2d");
+const c = document.getElementById("c");
+const ctx = c.getContext("2d");
 
-const mini = document.getElementById("minimap");
-const mctx = mini.getContext("2d");
+c.width = window.innerWidth;
+c.height = window.innerHeight;
 
 let keys = {};
 
-let worldSize = 2000;
-
-let player = {
-    x:1000,
-    y:1000,
-    hp:100,
-    speed:4
+let world = {
+    width: 3000,
+    height: 3000
 };
 
 let cam = {x:0,y:0};
 
-let enemies = [];
-let items = [];
+let player = {
+    x:1500,
+    y:1500,
+    w:20,
+    h:20,
+    hp:100,
+    speed:4
+};
+
 let bullets = [];
+let enemyBullets = [];
 
-// INPUT
-document.addEventListener("keydown", e=>{
-    keys[e.key.toLowerCase()] = true;
-});
+let enemies = [];
+let walls = [];
 
-document.addEventListener("keyup", e=>{
-    keys[e.key.toLowerCase()] = false;
-});
+// --- INPUT ---
+document.addEventListener("keydown",e=>keys[e.key.toLowerCase()]=true);
+document.addEventListener("keyup",e=>keys[e.key.toLowerCase()]=false);
 
-document.addEventListener("mousedown", ()=>{
-    shoot();
-});
+// --- HÄUSER / WÄNDE ---
+function createHouse(x,y,w,h){
+    walls.push({x,y,w,h});
+}
 
-// WORLD
-for(let i=0;i<50;i++){
+// 3 Häuser
+createHouse(800,800,200,200);
+createHouse(1700,1200,300,200);
+createHouse(1200,2000,250,250);
+
+// --- ENEMIES ---
+for(let i=0;i<8;i++){
     enemies.push({
-        x:Math.random()*worldSize,
-        y:Math.random()*worldSize,
-        speed:1.2
+        x:Math.random()*world.width,
+        y:Math.random()*world.height,
+        w:20,
+        h:20,
+        cooldown:0
     });
 }
 
-for(let i=0;i<30;i++){
-    items.push({
-        x:Math.random()*worldSize,
-        y:Math.random()*worldSize
-    });
+// --- COLLISION ---
+function collide(a,b){
+    return (
+        a.x < b.x+b.w &&
+        a.x+a.w > b.x &&
+        a.y < b.y+b.h &&
+        a.y+a.h > b.y
+    );
 }
 
-// SHOOT
-function shoot(){
-    bullets.push({
-        x:player.x,
-        y:player.y,
-        dx:0,
-        dy:-8
-    });
+// --- MOVEMENT WITH COLLISION ---
+function move(obj,dx,dy){
+
+    obj.x += dx;
+
+    for(let w of walls){
+        if(collide(obj,w)){
+            obj.x -= dx;
+        }
+    }
+
+    obj.y += dy;
+
+    for(let w of walls){
+        if(collide(obj,w)){
+            obj.y -= dy;
+        }
+    }
 }
 
-// UPDATE
+// --- SHOOT ---
+function shoot(from,to){
+    let dx = to.x-from.x;
+    let dy = to.y-from.y;
+    let d = Math.sqrt(dx*dx+dy*dy);
+
+    return {
+        x:from.x,
+        y:from.y,
+        dx:dx/d*6,
+        dy:dy/d*6,
+        w:6,h:6
+    };
+}
+
+// --- GAME LOOP ---
 function update(){
 
-    if(keys["w"]) player.y -= player.speed;
-    if(keys["s"]) player.y += player.speed;
-    if(keys["a"]) player.x -= player.speed;
-    if(keys["d"]) player.x += player.speed;
+    if(player.hp<=0){
+        document.getElementById("gameOver").style.display="block";
+        return;
+    }
 
-    cam.x += (player.x - canvas.width/2 - cam.x) * 0.1;
-    cam.y += (player.y - canvas.height/2 - cam.y) * 0.1;
+    let dx=0,dy=0;
 
+    if(keys["w"]) dy=-player.speed;
+    if(keys["s"]) dy=player.speed;
+    if(keys["a"]) dx=-player.speed;
+    if(keys["d"]) dx=player.speed;
+
+    move(player,dx,dy);
+
+    // camera follow
+    cam.x = player.x - c.width/2;
+    cam.y = player.y - c.height/2;
+
+    // enemies
     enemies.forEach(e=>{
+
         let dx = player.x - e.x;
         let dy = player.y - e.y;
-        let d = Math.sqrt(dx*dx + dy*dy);
+        let d = Math.sqrt(dx*dx+dy*dy);
 
-        e.x += dx/d * e.speed;
-        e.y += dy/d * e.speed;
+        e.x += dx/d*1.2;
+        e.y += dy/d*1.2;
 
-        if(d < 18){
-            player.hp -= 0.3;
+        e.cooldown--;
+
+        if(e.cooldown<=0){
+            enemyBullets.push(shoot(e,player));
+            e.cooldown=120;
+        }
+    });
+
+    // bullets player
+    bullets.forEach(b=>{
+        b.x += b.dx;
+        b.y += b.dy;
+    });
+
+    // enemy bullets
+    enemyBullets.forEach(b=>{
+        b.x += b.dx;
+        b.y += b.dy;
+
+        if(
+            b.x<player.x+player.w &&
+            b.x+6>player.x &&
+            b.y<player.y+player.h &&
+            b.y+6>player.y
+        ){
+            player.hp -= 10;
+            b.dead=true;
         }
     });
 
     bullets.forEach(b=>{
-        b.y -= 10;
-    });
-
-    bullets.forEach((b,i)=>{
-        enemies.forEach((e,j)=>{
-            let dx = b.x - e.x;
-            let dy = b.y - e.y;
-
-            if(Math.sqrt(dx*dx+dy*dy) < 20){
-                enemies.splice(j,1);
-                bullets.splice(i,1);
+        enemies.forEach(e=>{
+            if(
+                b.x<e.x+e.w &&
+                b.x+6>e.x &&
+                b.y<e.y+e.h &&
+                b.y+6>e.y
+            ){
+                e.dead=true;
+                b.dead=true;
             }
         });
     });
 
-    player.hp = Math.max(0, player.hp);
+    enemies = enemies.filter(e=>!e.dead);
+    bullets = bullets.filter(b=>!b.dead);
+    enemyBullets = enemyBullets.filter(b=>!b.dead);
 
-    document.getElementById("hpFill").style.width = player.hp + "%";
+    document.getElementById("hpFill").style.width = player.hp+"%";
 }
 
-// DRAW
+// --- DRAW ---
 function draw(){
 
-    ctx.clearRect(0,0,canvas.width,canvas.height);
+    ctx.clearRect(0,0,c.width,c.height);
 
-    // ITEMS
-    ctx.fillStyle="yellow";
-    items.forEach(i=>{
-        ctx.fillRect(i.x-cam.x, i.y-cam.y, 6,6);
+    // walls (häuser)
+    ctx.fillStyle="#555";
+    walls.forEach(w=>{
+        ctx.fillRect(w.x-cam.x,w.y-cam.y,w.w,w.h);
     });
 
-    // ENEMIES
+    // enemies
     ctx.fillStyle="red";
     enemies.forEach(e=>{
-        ctx.fillRect(e.x-cam.x-10, e.y-cam.y-10, 20,20);
+        ctx.fillRect(e.x-cam.x,e.y-cam.y,e.w,e.h);
     });
 
-    // BULLETS
-    ctx.fillStyle="white";
+    // enemy bullets
+    ctx.fillStyle="orange";
+    enemyBullets.forEach(b=>{
+        ctx.fillRect(b.x-cam.x,b.y-cam.y,6,6);
+    });
+
+    // player bullets
+    ctx.fillStyle="yellow";
     bullets.forEach(b=>{
-        ctx.fillRect(b.x-cam.x, b.y-cam.y, 4,4);
+        ctx.fillRect(b.x-cam.x,b.y-cam.y,6,6);
     });
 
-    // PLAYER
+    // player
     ctx.fillStyle="cyan";
-    ctx.fillRect(player.x-cam.x-10, player.y-cam.y-10, 20,20);
-
-    drawMinimap();
+    ctx.fillRect(player.x-cam.x,player.y-cam.y,player.w,player.h);
 }
 
-// MINIMAP
-function drawMinimap(){
+// shoot on click
+document.addEventListener("mousedown",()=>{
+    bullets.push(shoot(player,player));
+});
 
-    mctx.clearRect(0,0,150,150);
-
-    mctx.fillStyle="#0b3d0b";
-    mctx.fillRect(0,0,150,150);
-
-    let s = 150 / worldSize;
-
-    mctx.fillStyle="cyan";
-    mctx.fillRect(player.x*s, player.y*s, 3,3);
-
-    mctx.fillStyle="red";
-    enemies.forEach(e=>{
-        mctx.fillRect(e.x*s, e.y*s, 2,2);
-    });
-}
-
-// LOOP
 function loop(){
     update();
     draw();
@@ -227,6 +294,5 @@ function loop(){
 loop();
 
 </script>
-
 </body>
 </html>
