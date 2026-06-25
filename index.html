@@ -2,7 +2,7 @@
 <html lang="de">
 <head>
 <meta charset="UTF-8">
-<title>Open World Shooter V2</title>
+<title>Open World Shooter FIXED</title>
 
 <style>
 body{
@@ -14,7 +14,6 @@ body{
 
 canvas{
     display:block;
-    margin:auto;
     background:#2c8f2c;
 }
 
@@ -23,10 +22,11 @@ canvas{
     top:10px;
     left:10px;
     color:white;
+    z-index:10;
 }
 
 #hpBar{
-    width:200px;
+    width:220px;
     height:18px;
     background:#333;
     border:2px solid white;
@@ -73,12 +73,15 @@ c.height = window.innerHeight;
 let keys = {};
 
 let world = {
-    width: 3000,
-    height: 3000
+    w: 3000,
+    h: 3000
 };
 
 let cam = {x:0,y:0};
 
+let gameOver = false;
+
+// PLAYER
 let player = {
     x:1500,
     y:1500,
@@ -88,38 +91,39 @@ let player = {
     speed:4
 };
 
+// OBJECTS
+let enemies = [];
 let bullets = [];
 let enemyBullets = [];
-
-let enemies = [];
 let walls = [];
 
-// --- INPUT ---
+// INPUT
 document.addEventListener("keydown",e=>keys[e.key.toLowerCase()]=true);
 document.addEventListener("keyup",e=>keys[e.key.toLowerCase()]=false);
 
-// --- HÄUSER / WÄNDE ---
-function createHouse(x,y,w,h){
+document.addEventListener("mousedown", shoot);
+
+// ---------------- WALLS (HÄUSER) ----------------
+function addWall(x,y,w,h){
     walls.push({x,y,w,h});
 }
 
-// 3 Häuser
-createHouse(800,800,200,200);
-createHouse(1700,1200,300,200);
-createHouse(1200,2000,250,250);
+addWall(800,800,250,250);
+addWall(1600,1200,300,200);
+addWall(1200,2000,250,300);
 
-// --- ENEMIES ---
-for(let i=0;i<8;i++){
+// ---------------- ENEMIES ----------------
+for(let i=0;i<10;i++){
     enemies.push({
-        x:Math.random()*world.width,
-        y:Math.random()*world.height,
+        x:Math.random()*world.w,
+        y:Math.random()*world.h,
         w:20,
         h:20,
         cooldown:0
     });
 }
 
-// --- COLLISION ---
+// ---------------- COLLISION ----------------
 function collide(a,b){
     return (
         a.x < b.x+b.w &&
@@ -129,49 +133,58 @@ function collide(a,b){
     );
 }
 
-// --- MOVEMENT WITH COLLISION ---
+// ---------------- MOVE WITH COLLISION ----------------
 function move(obj,dx,dy){
 
     obj.x += dx;
-
     for(let w of walls){
-        if(collide(obj,w)){
-            obj.x -= dx;
-        }
+        if(collide(obj,w)) obj.x -= dx;
     }
 
     obj.y += dy;
-
     for(let w of walls){
-        if(collide(obj,w)){
-            obj.y -= dy;
-        }
+        if(collide(obj,w)) obj.y -= dy;
     }
 }
 
-// --- SHOOT ---
-function shoot(from,to){
-    let dx = to.x-from.x;
-    let dy = to.y-from.y;
+// ---------------- SHOOT ----------------
+function shoot(){
+
+    let angle = 0; // fixed forward shoot (can upgrade later to mouse aim)
+
+    bullets.push({
+        x:player.x,
+        y:player.y,
+        dx:Math.cos(angle)*8,
+        dy:Math.sin(angle)*8,
+        w:5,
+        h:5
+    });
+}
+
+// enemy shoot toward player
+function enemyShoot(e){
+
+    let dx = player.x - e.x;
+    let dy = player.y - e.y;
     let d = Math.sqrt(dx*dx+dy*dy);
 
     return {
-        x:from.x,
-        y:from.y,
-        dx:dx/d*6,
-        dy:dy/d*6,
-        w:6,h:6
+        x:e.x,
+        y:e.y,
+        dx:dx/d*5,
+        dy:dy/d*5,
+        w:5,
+        h:5
     };
 }
 
-// --- GAME LOOP ---
+// ---------------- UPDATE ----------------
 function update(){
 
-    if(player.hp<=0){
-        document.getElementById("gameOver").style.display="block";
-        return;
-    }
+    if(gameOver) return;
 
+    // PLAYER MOVE
     let dx=0,dy=0;
 
     if(keys["w"]) dy=-player.speed;
@@ -181,110 +194,118 @@ function update(){
 
     move(player,dx,dy);
 
-    // camera follow
-    cam.x = player.x - c.width/2;
-    cam.y = player.y - c.height/2;
+    // CAMERA FOLLOW
+    cam.x += (player.x - c.width/2 - cam.x)*0.08;
+    cam.y += (player.y - c.height/2 - cam.y)*0.08;
 
-    // enemies
+    // ENEMIES AI
     enemies.forEach(e=>{
 
         let dx = player.x - e.x;
         let dy = player.y - e.y;
         let d = Math.sqrt(dx*dx+dy*dy);
 
-        e.x += dx/d*1.2;
-        e.y += dy/d*1.2;
+        e.x += dx/d * 1.2;
+        e.y += dy/d * 1.2;
 
+        // SHOOT
         e.cooldown--;
 
         if(e.cooldown<=0){
-            enemyBullets.push(shoot(e,player));
-            e.cooldown=120;
+            enemyBullets.push(enemyShoot(e));
+            e.cooldown = 120;
         }
     });
 
-    // bullets player
+    // BULLETS PLAYER
     bullets.forEach(b=>{
         b.x += b.dx;
         b.y += b.dy;
     });
 
-    // enemy bullets
+    // ENEMY BULLETS
     enemyBullets.forEach(b=>{
         b.x += b.dx;
         b.y += b.dy;
 
         if(
-            b.x<player.x+player.w &&
-            b.x+6>player.x &&
-            b.y<player.y+player.h &&
-            b.y+6>player.y
+            b.x < player.x + player.w &&
+            b.x + b.w > player.x &&
+            b.y < player.y + player.h &&
+            b.y + b.h > player.y
         ){
-            player.hp -= 10;
-            b.dead=true;
+            player.hp -= 8;
+            b.dead = true;
         }
     });
 
+    // HIT ENEMIES
     bullets.forEach(b=>{
         enemies.forEach(e=>{
             if(
-                b.x<e.x+e.w &&
-                b.x+6>e.x &&
-                b.y<e.y+e.h &&
-                b.y+6>e.y
+                b.x < e.x + e.w &&
+                b.x + b.w > e.x &&
+                b.y < e.y + e.h &&
+                b.y + b.h > e.y
             ){
-                e.dead=true;
-                b.dead=true;
+                e.dead = true;
+                b.dead = true;
             }
         });
     });
 
+    // CLEANUP
     enemies = enemies.filter(e=>!e.dead);
     bullets = bullets.filter(b=>!b.dead);
     enemyBullets = enemyBullets.filter(b=>!b.dead);
 
-    document.getElementById("hpFill").style.width = player.hp+"%";
+    // HP
+    player.hp = Math.max(0, player.hp);
+
+    document.getElementById("hpFill").style.width = player.hp + "%";
+
+    // GAME OVER
+    if(player.hp <= 0){
+        gameOver = true;
+        document.getElementById("gameOver").style.display="block";
+    }
 }
 
-// --- DRAW ---
+// ---------------- DRAW ----------------
 function draw(){
 
     ctx.clearRect(0,0,c.width,c.height);
 
-    // walls (häuser)
-    ctx.fillStyle="#555";
+    // WALLS
+    ctx.fillStyle="#666";
     walls.forEach(w=>{
         ctx.fillRect(w.x-cam.x,w.y-cam.y,w.w,w.h);
     });
 
-    // enemies
+    // ENEMIES
     ctx.fillStyle="red";
     enemies.forEach(e=>{
         ctx.fillRect(e.x-cam.x,e.y-cam.y,e.w,e.h);
     });
 
-    // enemy bullets
-    ctx.fillStyle="orange";
-    enemyBullets.forEach(b=>{
-        ctx.fillRect(b.x-cam.x,b.y-cam.y,6,6);
-    });
-
-    // player bullets
+    // BULLETS
     ctx.fillStyle="yellow";
     bullets.forEach(b=>{
-        ctx.fillRect(b.x-cam.x,b.y-cam.y,6,6);
+        ctx.fillRect(b.x-cam.x,b.y-cam.y,b.w,b.h);
     });
 
-    // player
+    // ENEMY BULLETS
+    ctx.fillStyle="orange";
+    enemyBullets.forEach(b=>{
+        ctx.fillRect(b.x-cam.x,b.y-cam.y,b.w,b.h);
+    });
+
+    // PLAYER
     ctx.fillStyle="cyan";
     ctx.fillRect(player.x-cam.x,player.y-cam.y,player.w,player.h);
 }
 
-// shoot on click
-document.addEventListener("mousedown",()=>{
-    bullets.push(shoot(player,player));
-});
-
+// ---------------- LOOP ----------------
 function loop(){
     update();
     draw();
@@ -294,5 +315,6 @@ function loop(){
 loop();
 
 </script>
+
 </body>
 </html>
