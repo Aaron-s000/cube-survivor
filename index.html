@@ -2,14 +2,14 @@
 <html lang="de">
 <head>
 <meta charset="UTF-8">
-<title>Open World Shooter</title>
+<title>Open World FIX</title>
 
 <style>
 body{
     margin:0;
-    background:#0f0f0f;
-    font-family:Arial;
     overflow:hidden;
+    background:#111;
+    font-family:Arial;
     color:white;
 }
 
@@ -52,9 +52,8 @@ canvas{
 <body>
 
 <div id="ui">
-    ❤️ HP
-    <div id="hpBar"><div id="hpFill"></div></div>
-    🔫 Weapon: Pistol
+❤️ HP
+<div id="hpBar"><div id="hpFill"></div></div>
 </div>
 
 <canvas id="game" width="900" height="600"></canvas>
@@ -65,17 +64,16 @@ canvas{
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
 
-const m = document.getElementById("minimap");
-const mctx = m.getContext("2d");
+const mini = document.getElementById("minimap");
+const mctx = mini.getContext("2d");
 
 let keys = {};
-let mouseDown = false;
 
-let worldSize = 3000;
+let worldSize = 2000;
 
 let player = {
-    x:1500,
-    y:1500,
+    x:1000,
+    y:1000,
     hp:100,
     speed:4
 };
@@ -87,21 +85,20 @@ let items = [];
 let bullets = [];
 
 // INPUT
-document.addEventListener("keydown", e=>keys[e.key.toLowerCase()] = true);
-document.addEventListener("keyup", e=>keys[e.key.toLowerCase()] = false);
+document.addEventListener("keydown", e=>{
+    keys[e.key.toLowerCase()] = true;
+});
 
-document.addEventListener("mousedown", ()=>mouseDown = true);
-document.addEventListener("mouseup", ()=>mouseDown = false);
+document.addEventListener("keyup", e=>{
+    keys[e.key.toLowerCase()] = false;
+});
+
+document.addEventListener("mousedown", ()=>{
+    shoot();
+});
 
 // WORLD
-for(let i=0;i<80;i++){
-    items.push({
-        x:Math.random()*worldSize,
-        y:Math.random()*worldSize
-    });
-}
-
-for(let i=0;i<60;i++){
+for(let i=0;i<50;i++){
     enemies.push({
         x:Math.random()*worldSize,
         y:Math.random()*worldSize,
@@ -109,6 +106,14 @@ for(let i=0;i<60;i++){
     });
 }
 
+for(let i=0;i<30;i++){
+    items.push({
+        x:Math.random()*worldSize,
+        y:Math.random()*worldSize
+    });
+}
+
+// SHOOT
 function shoot(){
     bullets.push({
         x:player.x,
@@ -118,25 +123,17 @@ function shoot(){
     });
 }
 
+// UPDATE
 function update(){
 
-    // MOVEMENT
     if(keys["w"]) player.y -= player.speed;
     if(keys["s"]) player.y += player.speed;
     if(keys["a"]) player.x -= player.speed;
     if(keys["d"]) player.x += player.speed;
 
-    // SHOOT
-    if(mouseDown){
-        shoot();
-        mouseDown = false;
-    }
+    cam.x += (player.x - canvas.width/2 - cam.x) * 0.1;
+    cam.y += (player.y - canvas.height/2 - cam.y) * 0.1;
 
-    // CAMERA SMOOTH FOLLOW
-    cam.x += (player.x - canvas.width/2 - cam.x) * 0.08;
-    cam.y += (player.y - canvas.height/2 - cam.y) * 0.08;
-
-    // ENEMIES AI
     enemies.forEach(e=>{
         let dx = player.x - e.x;
         let dy = player.y - e.y;
@@ -146,11 +143,10 @@ function update(){
         e.y += dy/d * e.speed;
 
         if(d < 18){
-            player.hp -= 0.2;
+            player.hp -= 0.3;
         }
     });
 
-    // BULLETS
     bullets.forEach(b=>{
         b.y -= 10;
     });
@@ -172,6 +168,7 @@ function update(){
     document.getElementById("hpFill").style.width = player.hp + "%";
 }
 
+// DRAW
 function draw(){
 
     ctx.clearRect(0,0,canvas.width,canvas.height);
@@ -201,6 +198,7 @@ function draw(){
     drawMinimap();
 }
 
+// MINIMAP
 function drawMinimap(){
 
     mctx.clearRect(0,0,150,150);
@@ -208,25 +206,18 @@ function drawMinimap(){
     mctx.fillStyle="#0b3d0b";
     mctx.fillRect(0,0,150,150);
 
-    let scale = 150 / worldSize;
+    let s = 150 / worldSize;
 
-    // player
     mctx.fillStyle="cyan";
-    mctx.fillRect(player.x*scale, player.y*scale, 3,3);
+    mctx.fillRect(player.x*s, player.y*s, 3,3);
 
-    // enemies
     mctx.fillStyle="red";
     enemies.forEach(e=>{
-        mctx.fillRect(e.x*scale, e.y*scale, 2,2);
-    });
-
-    // items
-    mctx.fillStyle="yellow";
-    items.forEach(i=>{
-        mctx.fillRect(i.x*scale, i.y*scale, 2,2);
+        mctx.fillRect(e.x*s, e.y*s, 2,2);
     });
 }
 
+// LOOP
 function loop(){
     update();
     draw();
