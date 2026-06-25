@@ -2,19 +2,19 @@
 <html lang="de">
 <head>
 <meta charset="UTF-8">
-<title>Open World Shooter FIXED</title>
+<title>Open World Shooter PRO</title>
 
 <style>
 body{
     margin:0;
     overflow:hidden;
-    background:#111;
     font-family:Arial;
+    background:#111;
 }
 
 canvas{
     display:block;
-    background:#2c8f2c;
+    background:#2f8f2f;
 }
 
 #ui{
@@ -38,27 +38,46 @@ canvas{
     background:red;
 }
 
-#gameOver{
+#menu,#gameOverScreen{
     position:fixed;
-    top:50%;
-    left:50%;
-    transform:translate(-50%,-50%);
-    font-size:60px;
-    color:red;
-    display:none;
-    font-weight:bold;
+    top:0;
+    left:0;
+    width:100%;
+    height:100%;
+    background:rgba(0,0,0,0.9);
+    display:flex;
+    flex-direction:column;
+    justify-content:center;
+    align-items:center;
+    color:white;
+    font-size:30px;
+}
+
+button{
+    padding:10px 20px;
+    font-size:20px;
+    margin:10px;
 }
 </style>
 </head>
 
 <body>
 
+<div id="menu">
+    <h1>OPEN WORLD SHOOTER</h1>
+    <button onclick="startGame()">Start Game</button>
+</div>
+
+<div id="gameOverScreen" style="display:none;">
+    <h1>GAME OVER</h1>
+    <button onclick="backToMenu()">Zurück zum Menü</button>
+</div>
+
 <div id="ui">
 HP
 <div id="hpBar"><div id="hpFill"></div></div>
+<div>Weapon: <span id="weapon">Pistol</span></div>
 </div>
-
-<div id="gameOver">GAME OVER</div>
 
 <canvas id="c"></canvas>
 
@@ -70,99 +89,205 @@ const ctx = c.getContext("2d");
 c.width = window.innerWidth;
 c.height = window.innerHeight;
 
-let keys = {};
+// GAME STATE
+let state = "menu";
 
-let world = {
-    w: 3000,
-    h: 3000
-};
+// WORLD
+let world = 3000;
 
+// CAMERA
 let cam = {x:0,y:0};
 
-let gameOver = false;
+// INPUT
+let keys = {};
+let mouse = {x:0,y:0};
 
 // PLAYER
-let player = {
-    x:1500,
-    y:1500,
-    w:20,
-    h:20,
-    hp:100,
-    speed:4
-};
+let player;
 
 // OBJECTS
 let enemies = [];
 let bullets = [];
 let enemyBullets = [];
+let loot = [];
 let walls = [];
+let weapons = ["Pistol"];
+let weaponIndex = 0;
 
-// INPUT
+// ---------------- INPUT ----------------
 document.addEventListener("keydown",e=>keys[e.key.toLowerCase()]=true);
 document.addEventListener("keyup",e=>keys[e.key.toLowerCase()]=false);
 
-document.addEventListener("mousedown", shoot);
+document.addEventListener("mousemove",e=>{
+    mouse.x = e.clientX;
+    mouse.y = e.clientY;
+});
 
-// ---------------- WALLS (HÄUSER) ----------------
-function addWall(x,y,w,h){
-    walls.push({x,y,w,h});
-}
+document.addEventListener("mousedown",e=>{
+    if(state !== "play") return;
 
-addWall(800,800,250,250);
-addWall(1600,1200,300,200);
-addWall(1200,2000,250,300);
+    if(e.button === 0) shoot();
+    if(e.button === 2) pickUp();
+});
 
-// ---------------- ENEMIES ----------------
-for(let i=0;i<10;i++){
-    enemies.push({
-        x:Math.random()*world.w,
-        y:Math.random()*world.h,
+document.addEventListener("contextmenu",e=>e.preventDefault());
+
+document.addEventListener("wheel",e=>{
+    weaponIndex++;
+    if(weaponIndex>=weapons.length) weaponIndex=0;
+    document.getElementById("weapon").innerText = weapons[weaponIndex];
+});
+
+// ---------------- START ----------------
+function startGame(){
+
+    state = "play";
+    document.getElementById("menu").style.display="none";
+    document.getElementById("gameOverScreen").style.display="none";
+
+    player = {
+        x:1500,
+        y:1500,
         w:20,
         h:20,
-        cooldown:0
-    });
-}
+        hp:100,
+        speed:4
+    };
 
-// ---------------- COLLISION ----------------
-function collide(a,b){
-    return (
-        a.x < b.x+b.w &&
-        a.x+a.w > b.x &&
-        a.y < b.y+b.h &&
-        a.y+a.h > b.y
-    );
-}
+    enemies = [];
+    bullets = [];
+    enemyBullets = [];
+    loot = [];
 
-// ---------------- MOVE WITH COLLISION ----------------
-function move(obj,dx,dy){
-
-    obj.x += dx;
-    for(let w of walls){
-        if(collide(obj,w)) obj.x -= dx;
+    // enemies
+    for(let i=0;i<10;i++){
+        enemies.push({x:Math.random()*world,y:Math.random()*world,cool:0});
     }
 
-    obj.y += dy;
-    for(let w of walls){
-        if(collide(obj,w)) obj.y -= dy;
+    // loot weapons
+    for(let i=0;i<5;i++){
+        loot.push({
+            x:Math.random()*world,
+            y:Math.random()*world,
+            type:"gun"
+        });
     }
+
+    loop();
+}
+
+// ---------------- CAMERA ----------------
+function updateCamera(){
+    cam.x += (player.x - c.width/2 - cam.x)*0.08;
+    cam.y += (player.y - c.height/2 - cam.y)*0.08;
 }
 
 // ---------------- SHOOT ----------------
 function shoot(){
 
-    let angle = 0; // fixed forward shoot (can upgrade later to mouse aim)
+    let dx = mouse.x - c.width/2;
+    let dy = mouse.y - c.height/2;
+    let d = Math.sqrt(dx*dx+dy*dy);
 
     bullets.push({
         x:player.x,
         y:player.y,
-        dx:Math.cos(angle)*8,
-        dy:Math.sin(angle)*8,
-        w:5,
-        h:5
+        dx:dx/d*10,
+        dy:dy/d*10
     });
 }
 
-// enemy shoot toward player
+// ---------------- PICKUP ----------------
+function pickUp(){
+    loot.forEach(l=>{
+        let dx = player.x - l.x;
+        let dy = player.y - l.y;
+        let d = Math.sqrt(dx*dx+dy*dy);
+
+        if(d<40){
+            weapons.push("Rifle");
+            l.dead = true;
+        }
+    });
+
+    loot = loot.filter(l=>!l.dead);
+}
+
+// ---------------- UPDATE ----------------
+function update(){
+
+    if(state !== "play") return;
+
+    // MOVE
+    if(keys["w"]) player.y -= player.speed;
+    if(keys["s"]) player.y += player.speed;
+    if(keys["a"]) player.x -= player.speed;
+    if(keys["d"]) player.x += player.speed;
+
+    updateCamera();
+
+    // ENEMIES
+    enemies.forEach(e=>{
+        let dx = player.x - e.x;
+        let dy = player.y - e.y;
+        let d = Math.sqrt(dx*dx+dy*dy);
+
+        e.x += dx/d*1.5;
+        e.y += dy/d*1.5;
+
+        e.cool--;
+
+        if(e.cool<=0){
+            let bd = enemyShoot(e);
+            enemyBullets.push(bd);
+            e.cool=120;
+        }
+    });
+
+    // BULLETS
+    bullets.forEach(b=>{
+        b.x += b.dx;
+        b.y += b.dy;
+    });
+
+    enemyBullets.forEach(b=>{
+        b.x += b.dx;
+        b.y += b.dy;
+
+        let dx = player.x - b.x;
+        let dy = player.y - b.y;
+        if(Math.sqrt(dx*dx+dy*dy)<15){
+            player.hp -= 10;
+            b.dead=true;
+        }
+    });
+
+    bullets.forEach(b=>{
+        enemies.forEach(e=>{
+            let dx = b.x - e.x;
+            let dy = b.y - e.y;
+            if(Math.sqrt(dx*dx+dy*dy)<20){
+                e.dead=true;
+                b.dead=true;
+            }
+        });
+    });
+
+    enemies = enemies.filter(e=>!e.dead);
+    bullets = bullets.filter(b=>!b.dead);
+    enemyBullets = enemyBullets.filter(b=>!b.dead);
+
+    // HP
+    player.hp = Math.max(0,player.hp);
+
+    document.getElementById("hpFill").style.width = player.hp+"%";
+
+    if(player.hp<=0){
+        gameOver();
+    }
+}
+
+// ---------------- ENEMY SHOOT ----------------
 function enemyShoot(e){
 
     let dx = player.x - e.x;
@@ -172,137 +297,58 @@ function enemyShoot(e){
     return {
         x:e.x,
         y:e.y,
-        dx:dx/d*5,
-        dy:dy/d*5,
-        w:5,
-        h:5
+        dx:dx/d*6,
+        dy:dy/d*6
     };
 }
 
-// ---------------- UPDATE ----------------
-function update(){
+// ---------------- GAME OVER ----------------
+function gameOver(){
+    state="over";
+    document.getElementById("gameOverScreen").style.display="flex";
+}
 
-    if(gameOver) return;
-
-    // PLAYER MOVE
-    let dx=0,dy=0;
-
-    if(keys["w"]) dy=-player.speed;
-    if(keys["s"]) dy=player.speed;
-    if(keys["a"]) dx=-player.speed;
-    if(keys["d"]) dx=player.speed;
-
-    move(player,dx,dy);
-
-    // CAMERA FOLLOW
-    cam.x += (player.x - c.width/2 - cam.x)*0.08;
-    cam.y += (player.y - c.height/2 - cam.y)*0.08;
-
-    // ENEMIES AI
-    enemies.forEach(e=>{
-
-        let dx = player.x - e.x;
-        let dy = player.y - e.y;
-        let d = Math.sqrt(dx*dx+dy*dy);
-
-        e.x += dx/d * 1.2;
-        e.y += dy/d * 1.2;
-
-        // SHOOT
-        e.cooldown--;
-
-        if(e.cooldown<=0){
-            enemyBullets.push(enemyShoot(e));
-            e.cooldown = 120;
-        }
-    });
-
-    // BULLETS PLAYER
-    bullets.forEach(b=>{
-        b.x += b.dx;
-        b.y += b.dy;
-    });
-
-    // ENEMY BULLETS
-    enemyBullets.forEach(b=>{
-        b.x += b.dx;
-        b.y += b.dy;
-
-        if(
-            b.x < player.x + player.w &&
-            b.x + b.w > player.x &&
-            b.y < player.y + player.h &&
-            b.y + b.h > player.y
-        ){
-            player.hp -= 8;
-            b.dead = true;
-        }
-    });
-
-    // HIT ENEMIES
-    bullets.forEach(b=>{
-        enemies.forEach(e=>{
-            if(
-                b.x < e.x + e.w &&
-                b.x + b.w > e.x &&
-                b.y < e.y + e.h &&
-                b.y + b.h > e.y
-            ){
-                e.dead = true;
-                b.dead = true;
-            }
-        });
-    });
-
-    // CLEANUP
-    enemies = enemies.filter(e=>!e.dead);
-    bullets = bullets.filter(b=>!b.dead);
-    enemyBullets = enemyBullets.filter(b=>!b.dead);
-
-    // HP
-    player.hp = Math.max(0, player.hp);
-
-    document.getElementById("hpFill").style.width = player.hp + "%";
-
-    // GAME OVER
-    if(player.hp <= 0){
-        gameOver = true;
-        document.getElementById("gameOver").style.display="block";
-    }
+// ---------------- BACK TO MENU ----------------
+function backToMenu(){
+    state="menu";
+    document.getElementById("menu").style.display="flex";
+    document.getElementById("gameOverScreen").style.display="none";
 }
 
 // ---------------- DRAW ----------------
 function draw(){
 
+    if(state!=="play") return;
+
     ctx.clearRect(0,0,c.width,c.height);
 
-    // WALLS
-    ctx.fillStyle="#666";
-    walls.forEach(w=>{
-        ctx.fillRect(w.x-cam.x,w.y-cam.y,w.w,w.h);
+    // LOOT
+    ctx.fillStyle="yellow";
+    loot.forEach(l=>{
+        ctx.fillRect(l.x-cam.x,l.y-cam.y,10,10);
     });
 
     // ENEMIES
     ctx.fillStyle="red";
     enemies.forEach(e=>{
-        ctx.fillRect(e.x-cam.x,e.y-cam.y,e.w,e.h);
+        ctx.fillRect(e.x-cam.x,e.y-cam.y,20,20);
     });
 
     // BULLETS
-    ctx.fillStyle="yellow";
+    ctx.fillStyle="white";
     bullets.forEach(b=>{
-        ctx.fillRect(b.x-cam.x,b.y-cam.y,b.w,b.h);
+        ctx.fillRect(b.x-cam.x,b.y-cam.y,5,5);
     });
 
     // ENEMY BULLETS
     ctx.fillStyle="orange";
     enemyBullets.forEach(b=>{
-        ctx.fillRect(b.x-cam.x,b.y-cam.y,b.w,b.h);
+        ctx.fillRect(b.x-cam.x,b.y-cam.y,5,5);
     });
 
     // PLAYER
     ctx.fillStyle="cyan";
-    ctx.fillRect(player.x-cam.x,player.y-cam.y,player.w,player.h);
+    ctx.fillRect(player.x-cam.x,player.y-cam.y,20,20);
 }
 
 // ---------------- LOOP ----------------
@@ -311,8 +357,6 @@ function loop(){
     draw();
     requestAnimationFrame(loop);
 }
-
-loop();
 
 </script>
 
