@@ -2,169 +2,228 @@
 <html lang="de">
 <head>
 <meta charset="UTF-8">
-<title>Open World Survivor</title>
+<title>Open World Shooter</title>
 
 <style>
 body{
     margin:0;
-    background:#111;
+    background:#0f0f0f;
     color:white;
-    text-align:center;
     font-family:Arial;
+    overflow:hidden;
 }
 
 canvas{
-    background:#1f7a1f;
     display:block;
     margin:auto;
-    border:3px solid white;
+    background:#1f7a1f;
 }
 
-#hud{
+#ui{
     position:fixed;
     top:10px;
     left:10px;
-    font-size:20px;
+}
+
+#hpBar{
+    width:200px;
+    height:20px;
+    background:#333;
+    border:2px solid white;
+}
+
+#hpFill{
+    height:100%;
+    width:100%;
+    background:red;
+}
+
+#minimap{
+    position:fixed;
+    bottom:20px;
+    right:20px;
+    border-radius:50%;
+    border:2px solid white;
+}
+
+#menu{
+    position:fixed;
+    top:0;
+    left:0;
+    width:100%;
+    height:100%;
+    background:black;
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    flex-direction:column;
+}
+button{
+    padding:15px;
+    margin:10px;
 }
 </style>
 </head>
 
 <body>
 
-<div id="hud">❤️ Leben: <span id="hp">3</span> | ⭐ Score: <span id="score">0</span></div>
+<div id="menu">
+    <h1>OPEN WORLD SHOOTER</h1>
+    <button onclick="startGame(false)">Singleplayer</button>
+    <button onclick="startGame(true)">Multiplayer (Preview)</button>
+</div>
 
-<canvas id="c" width="900" height="600"></canvas>
+<div id="ui">
+    ❤️ HP
+    <div id="hpBar"><div id="hpFill"></div></div>
+    🔫 Weapon: <span id="weapon">Pistol</span>
+</div>
+
+<canvas id="game" width="900" height="600"></canvas>
+<canvas id="minimap" width="150" height="150"></canvas>
 
 <script>
 
-const canvas = document.getElementById("c");
-const ctx = canvas.getContext("2d");
+const c = document.getElementById("game");
+const ctx = c.getContext("2d");
+
+const m = document.getElementById("minimap");
+const mctx = m.getContext("2d");
 
 let keys = {};
-let worldSize = 3000;
+let mouseDown = false;
 
-let player = {
-    x:1500,
-    y:1500,
-    size:20,
-    speed:4,
-    hp:3
-};
+let worldSize = 2500;
 
+let player;
+let bullets = [];
 let enemies = [];
-let trees = [];
 let items = [];
-let score = 0;
 
-document.addEventListener("keydown", e => keys[e.key.toLowerCase()] = true);
-document.addEventListener("keyup", e => keys[e.key.toLowerCase()] = false);
+let weapons = ["Pistol","Rifle"];
+let weaponIndex = 0;
 
-// 🌲 Welt generieren
-for(let i=0;i<200;i++){
-    trees.push({
-        x:Math.random()*worldSize,
-        y:Math.random()*worldSize
-    });
+let multiplayer = false;
+
+document.addEventListener("keydown", e=>keys[e.key.toLowerCase()] = true);
+document.addEventListener("keyup", e=>keys[e.key.toLowerCase()] = false);
+
+document.addEventListener("mousedown", ()=>mouseDown = true);
+document.addEventListener("mouseup", ()=>mouseDown = false);
+
+document.addEventListener("wheel", e=>{
+    weaponIndex += Math.sign(e.deltaY);
+    if(weaponIndex < 0) weaponIndex = 0;
+    if(weaponIndex >= weapons.length) weaponIndex = weapons.length-1;
+});
+
+function startGame(mp){
+    multiplayer = mp;
+    document.getElementById("menu").style.display="none";
+
+    player = {
+        x:1200,
+        y:1200,
+        hp:100,
+        speed:4
+    };
+
+    for(let i=0;i<30;i++){
+        enemies.push({x:Math.random()*worldSize,y:Math.random()*worldSize,hp:3});
+    }
+
+    for(let i=0;i<10;i++){
+        items.push({x:Math.random()*worldSize,y:Math.random()*worldSize,type:"gun"});
+    }
+
+    loop();
 }
 
-// 💊 Items
-for(let i=0;i<20;i++){
-    items.push({
-        x:Math.random()*worldSize,
-        y:Math.random()*worldSize
+function shoot(){
+    bullets.push({
+        x:player.x,
+        y:player.y,
+        dx:0,
+        dy:-10
     });
 }
-
-// 👹 Gegner spawnen
-setInterval(()=>{
-    enemies.push({
-        x:Math.random()*worldSize,
-        y:Math.random()*worldSize,
-        speed:1.5
-    });
-},2000);
-
-// Kamera
-let cam = {x:0,y:0};
 
 function update(){
 
-    // Bewegung
     if(keys["w"]) player.y -= player.speed;
     if(keys["s"]) player.y += player.speed;
     if(keys["a"]) player.x -= player.speed;
     if(keys["d"]) player.x += player.speed;
 
-    // Kamera folgt Spieler
-    cam.x = player.x - canvas.width/2;
-    cam.y = player.y - canvas.height/2;
+    if(mouseDown && weapons[weaponIndex] !== "Pistol"){
+        shoot();
+        mouseDown = false;
+    }
 
-    // Gegner KI
     enemies.forEach(e=>{
         let dx = player.x - e.x;
         let dy = player.y - e.y;
         let d = Math.sqrt(dx*dx+dy*dy);
 
-        e.x += dx/d * e.speed;
-        e.y += dy/d * e.speed;
-
-        // Hit
-        if(d < 20){
-            player.hp--;
-            e.x = Math.random()*worldSize;
-            e.y = Math.random()*worldSize;
-        }
+        e.x += dx/d * 1.2;
+        e.y += dy/d * 1.2;
     });
 
-    // Items einsammeln
-    items.forEach(i=>{
-        let dx = player.x - i.x;
-        let dy = player.y - i.y;
-        let d = Math.sqrt(dx*dx+dy*dy);
-
-        if(d < 20){
-            player.hp = Math.min(3, player.hp+1);
-            i.x = Math.random()*worldSize;
-            i.y = Math.random()*worldSize;
-        }
+    bullets.forEach(b=>{
+        b.y -= 8;
     });
 
-    score++;
+    bullets.forEach((b,i)=>{
+        enemies.forEach((e,j)=>{
+            let dx = b.x - e.x;
+            let dy = b.y - e.y;
+            if(Math.sqrt(dx*dx+dy*dy) < 20){
+                enemies.splice(j,1);
+                bullets.splice(i,1);
+            }
+        });
+    });
+
+    document.getElementById("hpFill").style.width = player.hp + "%";
+    document.getElementById("weapon").innerText = weapons[weaponIndex];
 }
 
 function draw(){
 
-    ctx.clearRect(0,0,canvas.width,canvas.height);
+    ctx.clearRect(0,0,c.width,c.height);
 
-    // Bäume
-    ctx.fillStyle="darkgreen";
-    trees.forEach(t=>{
-        ctx.fillRect(t.x-cam.x,t.y-cam.y,20,20);
-    });
+    // player
+    ctx.fillStyle="cyan";
+    ctx.fillRect(player.x-10,player.y-10,20,20);
 
-    // Items
-    ctx.fillStyle="yellow";
-    items.forEach(i=>{
-        ctx.fillRect(i.x-cam.x,i.y-cam.y,10,10);
-    });
-
-    // Gegner
+    // enemies
     ctx.fillStyle="red";
     enemies.forEach(e=>{
-        ctx.fillRect(e.x-cam.x,e.y-cam.y,20,20);
+        ctx.fillRect(e.x-10,e.y-10,20,20);
     });
 
-    // Spieler
-    ctx.fillStyle="cyan";
-    ctx.fillRect(player.x-cam.x,player.y-cam.y,20,20);
+    // bullets
+    ctx.fillStyle="yellow";
+    bullets.forEach(b=>{
+        ctx.fillRect(b.x,b.y,5,5);
+    });
 
-    document.getElementById("hp").innerText = player.hp;
-    document.getElementById("score").innerText = score;
+    drawMinimap();
+}
 
-    if(player.hp <= 0){
-        alert("Game Over!");
-        location.reload();
-    }
+function drawMinimap(){
+    mctx.clearRect(0,0,150,150);
+
+    mctx.fillStyle="green";
+    mctx.fillRect(0,0,150,150);
+
+    mctx.fillStyle="blue";
+    mctx.fillRect(player.x/20,player.y/20,5,5);
+
+    mctx.fillStyle="red";
+    enemies.forEach(e=>{
+        mctx.fillRect(e.x/20,e.y/20,3,3);
+    });
 }
 
 function loop(){
@@ -172,8 +231,6 @@ function loop(){
     draw();
     requestAnimationFrame(loop);
 }
-
-loop();
 
 </script>
 
